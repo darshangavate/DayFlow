@@ -8,19 +8,172 @@ datasource db {
 }
 
 enum Role {
-  Role_1
-  Role_2
+  ADMIN
+  HR
+  EMPLOYEE
+}
+
+enum LeaveStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+enum DocumentType {
+  RESUME
+  OFFER_LETTER
+  ID_PROOF
+  CERTIFICATE
+  OTHER
 }
 
 model User {
+  id        String   @id @default(uuid())
+  name      String
+  email     String   @unique
+  password  String
+  role      Role     @default(EMPLOYEE)
+  isActive  Boolean  @default(true)
+
+  // Optional link to employee (1-1). Employee owns the FK (userId).
+  employee  Employee?
+
+  // Back-relations (these fix your missing-opposite errors)
+  leaveApprovals LeaveRequest[] @relation("LeaveApprovedByUser")
+  companyLogs    CompanyLog[]   @relation("CompanyLogCreatedByUser")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Employee {
+  id            String  @id @default(uuid())
+
+  // Employee code shown in HRMS (NOT a relation)
+  employeeCode  String  @unique
+
+  // 1-1 with User (owning side)
+  userId        String  @unique
+  user          User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  department    String?
+  designation   String?
+  dateOfJoin    DateTime?
+  managerId     String?
+
+  // Back-relations
+  profile       EmployeeProfile?
+  documents     Document[]       @relation("EmployeeDocuments")
+  leaveRequests LeaveRequest[]
+  employeeSkills EmployeeSkill[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model EmployeeProfile {
+  id          String  @id @default(uuid())
+
+  // 1-1 with Employee (owning side)
+  employeeId  String  @unique
+  employee    Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  // Personal details
+  phone       String?
+  dob         DateTime?
+  gender      String?
+  addressLine String?
+  city        String?
+  state       String?
+  country     String?
+  pincode     String?
+
+  emergencyContactName  String?
+  emergencyContactPhone String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Skill {
+  id    String @id @default(uuid())
+  name  String @unique
+
+  employees EmployeeSkill[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model EmployeeSkill {
+  employeeId String
+  skillId    String
+  level      Int?     // 1..5 (optional)
+  years      Float?   // optional
+
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  skill    Skill    @relation(fields: [skillId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@id([employeeId, skillId])
+}
+
+model Document {
+  id              String       @id @default(uuid())
+  title           String
+  type            DocumentType @default(OTHER)
+
+  // Store file URL/path (S3/Cloudinary/Firebase/etc)
+  fileUrl         String
+  mimeType        String?
+  sizeBytes       Int?
+
+  // Owner employee (optional)
+  ownerEmployeeId String?
+  ownerEmployee   Employee? @relation("EmployeeDocuments", fields: [ownerEmployeeId], references: [id], onDelete: SetNull)
+
+  // Back relation for leave attachments
+  leaveAttachments LeaveRequest[] @relation("LeaveAttachmentDocument")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model LeaveRequest {
+  id          String      @id @default(uuid())
+
+  employeeId  String
+  employee    Employee    @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  fromDate    DateTime
+  toDate      DateTime
+  reason      String?
+  status      LeaveStatus @default(PENDING)
+
+  // Who approved/rejected (User can be HR or ADMIN)
+  approvedByUserId String?
+  approvedByUser   User?    @relation("LeaveApprovedByUser", fields: [approvedByUserId], references: [id], onDelete: SetNull)
+  approvedAt       DateTime?
+
+  // Optional attachment document
+  attachmentDocumentId String?
+  attachmentDocument   Document? @relation("LeaveAttachmentDocument", fields: [attachmentDocumentId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model CompanyLog {
   id          String   @id @default(uuid())
-  name        String
-  description String?
-  email       String   @unique
-  password    String?
-  googleId    String?  @unique
-  role        Role     @default(Role_1)
-  photoUrl    String   @default("")
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  action      String
+  entity      String?
+  entityId    String?
+  meta        Json?
+
+  createdByUserId String?
+  createdByUser   User? @relation("CompanyLogCreatedByUser", fields: [createdByUserId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
 }
